@@ -24,7 +24,6 @@ ClosedCube_HDC1080 sensor;
 //GPS
 TinyGPSPlus gps;
 HardwareSerial GPS(1);
-static const uint32_t GPSBaud = 9600;
 
 void setup() {
   Serial.begin(115200); //Iniciar la comunicación serial (me conecto a capa 2)
@@ -124,6 +123,7 @@ static void smartDelay(unsigned long ms)
 }
 
 float* gpsData(int nro_data){
+  
   gps.encode(GPS.read());
   smartDelay(1000);
 
@@ -135,7 +135,7 @@ float* gpsData(int nro_data){
   {
     latitud = gps.location.lat();
     longitud = gps.location.lng();
-    smartDelay(100);
+    smartDelay(1000);
   } 
 
   data[0] = latitud;
