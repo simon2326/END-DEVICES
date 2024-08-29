@@ -16,7 +16,6 @@ static void smartDelay(unsigned long ms);
 const char* host = "10.38.32.137"; //direccion ip publica del servidor (maquina virtual)
 const uint16_t port = 80; //puerto por el cual me voy a conectar
 const char* ssid = "UPBWiFi"; //Nombre de la red upb
-
 WiFiClient client; //Cliente wifi para admin la comunicación
 
 //Temperatura y Humedad
@@ -27,20 +26,20 @@ TinyGPSPlus gps;
 
 void setup() {
   Wire.begin(0, 4); //Iniciar la comunicación I2C (sda, scl)
-  delay(100);
+  smartDelay(100);
 
   sensor.begin(0x40);
-  delay(20);
+  smartDelay(20);
 
   Serial.begin(115200); //Iniciar la comunicación serial (me conecto a capa 2)
   Serial1.begin(9600, SERIAL_8N1, 34, 12); //Comunicación con el GPS (baudrate, protocolo, rx, tx)
-  delay(20);
+  smartDelay(20);
 
   WiFi.mode(WIFI_STA); //Como se utiliza el wifi, su utiliza como cliente (tambien hay modo router)
   WiFi.begin(ssid); //Conectarse a la red upb.
 
   while (WiFi.status() != WL_CONNECTED) { //bucle infinito que no pasa de ahi hasta que se conecte
-    delay(500);
+    smartDelay(500);
     Serial.print(".");
   }
 
@@ -50,12 +49,10 @@ void setup() {
   Serial.println(WiFi.localIP());
   Serial.println("\n");
 
-  delay(100);
+  smartDelay(100);
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  delay(10000); //Enviar datos cada 10 segundos al servidor
 
   float temp = temperatura(3);
   float hum = humedad(3);
@@ -69,9 +66,12 @@ void loop() {
   Serial.printf("Latitud: %f\n", gps[0]);
   Serial.printf("Longitud: %f\n", gps[1]);
 
-  //Envio de datos al servidor
+  //Envío de datos al servidor
   bundling(temp, hum, gps);
 
+  for (int i = 0; i < 18; i++){
+    smartDelay(500); //La suma de los SmartDelay es 9 segundos, calculando la temperatura, humedad y posición me gasto 1 segundo.
+  }
 }
 
 //Prunning
@@ -120,23 +120,24 @@ float humedad(int nro_hums){
   return promedio;
 }
 
+//Obtener datos del GPS
 float* gpsData(){
-
-  float latitud, longitud;
+  smartDelay(400);
   float* data = new float[2];
-  smartDelay(100);
 
-  data[0] = gps.location.lat();
-  data[1] = gps.location.lng();
-
+  if(gps.location.isUpdated()){
+    data[0] = gps.location.lat();
+    data[1] = gps.location.lng();
+  }
   return data;
 }
 
+//Envío de datos
 void bundling(float temp, float hum, float* gps){
 
   if(client.connect(host, port))
   {
-    Serial.println("Conectado al servidor\n");
+    Serial.println("Conectado al servidor");
     String json = "{\"id\": \"point12\", \"lat\": " + String(gps[0], 6) + ", \"lon\": " + String(gps[1], 6) + ", \"temperatura\": " + String(temp, 2) + ", \"humedad\": " + String(hum, 2) + "}";
 
     client.println("POST /update_data HTTP/1.1"); 
@@ -145,6 +146,8 @@ void bundling(float temp, float hum, float* gps){
     client.println("Content-Length: " + String(json.length()));
     client.println("");
     client.println(json);
+
+    Serial.println("Datos enviados\n");
   }
   else
   {
