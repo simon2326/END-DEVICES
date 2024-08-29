@@ -8,32 +8,33 @@
 void prunning();
 float temperatura(int nro_temps);
 float humedad(int nro_hums);
-float* gpsData(int nro_data);
+float* gpsData();
+void bundling(float temp, float hum, float* gps);
 static void smartDelay(unsigned long ms);
 
 //Wifi
-const char* host = "54.80.92.106"; //direccion ip publica del servidor (maquina virtual)
+const char* host = "10.38.32.137"; //direccion ip publica del servidor (maquina virtual)
 const uint16_t port = 80; //puerto por el cual me voy a conectar
 const char* ssid = "UPBWiFi"; //Nombre de la red upb
 
-//WiFiClient client; //Cliente wifi para admin la comunicación
+WiFiClient client; //Cliente wifi para admin la comunicación
 
 //Temperatura y Humedad
 ClosedCube_HDC1080 sensor;
 
 //GPS
 TinyGPSPlus gps;
-HardwareSerial GPS(1);
 
 void setup() {
-  Serial.begin(115200); //Iniciar la comunicación serial (me conecto a capa 2)
   Wire.begin(0, 4); //Iniciar la comunicación I2C (sda, scl)
+  delay(100);
 
   sensor.begin(0x40);
   delay(20);
 
+  Serial.begin(115200); //Iniciar la comunicación serial (me conecto a capa 2)
   Serial1.begin(9600, SERIAL_8N1, 34, 12); //Comunicación con el GPS (baudrate, protocolo, rx, tx)
-
+  delay(20);
 
   WiFi.mode(WIFI_STA); //Como se utiliza el wifi, su utiliza como cliente (tambien hay modo router)
   WiFi.begin(ssid); //Conectarse a la red upb.
@@ -47,22 +48,29 @@ void setup() {
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
+  Serial.println("\n");
 
   delay(100);
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  delay(5000); //Mandar cada 5 seg un paquete
+  delay(10000); //Enviar datos cada 10 segundos al servidor
 
+  float temp = temperatura(3);
+  float hum = humedad(3);
+  float* gps = gpsData();
+  
   //Medición de temperatura y humedad
-  Serial.printf("Temperatura: %.2f C\n", temperatura(3));
-  Serial.printf("Humedad: %.2f %%\n", humedad(3));
+  Serial.printf("Temperatura: %.2f C\n", temp);
+  Serial.printf("Humedad: %.2f %%\n", hum);
 
   //Medición de GPS
-  smartDelay(1000);
-  Serial.printf("Latitud: %f\n", gpsData(3)[0]);
-  Serial.printf("Longitud: %f\n", gpsData(3)[1]);
+  Serial.printf("Latitud: %f\n", gps[0]);
+  Serial.printf("Longitud: %f\n", gps[1]);
+
+  //Envio de datos al servidor
+  bundling(temp, hum, gps);
 
 }
 
@@ -87,8 +95,8 @@ float temperatura(int nro_temps){
   for (int i = 0; i < nro_temps; i++)
   {
     temp = sensor.readTemperature();
+    smartDelay(100);
     temperaturas[i] = temp;
-    delay(100);
   }
 
   float promedio = prunning(temperaturas, nro_temps);
@@ -104,12 +112,44 @@ float humedad(int nro_hums){
   for (int i = 0; i < nro_hums; i++)
   {
     hum = sensor.readHumidity();
+    smartDelay(100);
     humedades[i] = hum;
-    delay(100);
   }
 
   float promedio = prunning(humedades, nro_hums);
   return promedio;
+}
+
+float* gpsData(){
+
+  float latitud, longitud;
+  float* data = new float[2];
+  smartDelay(100);
+
+  data[0] = gps.location.lat();
+  data[1] = gps.location.lng();
+
+  return data;
+}
+
+void bundling(float temp, float hum, float* gps){
+
+  if(client.connect(host, port))
+  {
+    Serial.println("Conectado al servidor\n");
+    String json = "{\"id\": \"point12\", \"lat\": " + String(gps[0], 6) + ", \"lon\": " + String(gps[1], 6) + ", \"temperatura\": " + String(temp, 2) + ", \"humedad\": " + String(hum, 2) + "}";
+
+    client.println("POST /update_data HTTP/1.1"); 
+    client.println("Host: 10.38.32.137");
+    client.println("Content-Type: application/json");
+    client.println("Content-Length: " + String(json.length()));
+    client.println("");
+    client.println(json);
+  }
+  else
+  {
+    Serial.println("Error al conectar al servidor");
+  }
 }
 
 static void smartDelay(unsigned long ms)
@@ -117,29 +157,7 @@ static void smartDelay(unsigned long ms)
   unsigned long start = millis();
   do
   {
-    while (GPS.available())
-      gps.encode(GPS.read());
+    while (Serial1.available())
+      gps.encode(Serial1.read());
   } while (millis() - start < ms);
-}
-
-float* gpsData(int nro_data){
-  
-  gps.encode(GPS.read());
-  smartDelay(1000);
-
-  float latitud, longitud;
-  float* data = new float[2];
-
-  //Calcula la latitud y longitud n veces y guarda los ultimos valores (prunning).
-  for (int i = 0; i < nro_data; i++)
-  {
-    latitud = gps.location.lat();
-    longitud = gps.location.lng();
-    smartDelay(1000);
-  } 
-
-  data[0] = latitud;
-  data[1] = longitud;
-
-  return data;
 }
